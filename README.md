@@ -31,7 +31,7 @@ system.logInfo("audioplayback|debug|sectionpass.mp3|1")
 - The fourth entry decides the used priority level.
     - 0 stops every channel regardless of chosen audiopack or file, but the pipes are still needed.
     - 1 is for audio that is supposed to play simultanously. Preferrably for shorter sound effects like clicks or confirmation sounds.
-    - 2 and above is for the priority levels of the priority queue. This is mostly for notifications and the differentiation between different importance. The current handling pauses lower priorities.
+    - 2 and above is for the priority levels of the priority queue. This is mostly for notifications and the differentiation between different importance. The current handling pauses lower priorities. 2 is a higher priority than 3 or above.
 
 
 
