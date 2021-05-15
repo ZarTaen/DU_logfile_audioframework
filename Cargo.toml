@@ -1,0 +1,15 @@
+[package]
+name = "DU_logfile_audioframework"
+version = "0.4.0"
+authors = ["ZarTaen <zartaen@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+app_dirs = "1.2.1"
+notify = "4.0.12"
+htmlescape = "0.3.1"
+winapi-util = "0.1.5"
+config = "0.11.0"
+rodio = "0.13.1"

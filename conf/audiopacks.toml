@@ -1,0 +1,5 @@
+#This file includes the audiopack directories with the name that is used to refer to a given directory.
+#The directory can be relative to the run directory of the program, or a static directory of your choosing.
+#Be careful what you use here however (I recommend just using the audiopacks folder in the same dir of the .exe)
+#audiopack_name = "audiopacks/audiopack_name"
+debug = "audiopacks/debug"
