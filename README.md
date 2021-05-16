@@ -33,8 +33,7 @@ system.logInfo("audioplayback|debug|sectionpass.mp3|1")
     - 1 is for audio that is supposed to play simultanously. Preferrably for shorter sound effects like clicks or confirmation sounds.
     - 2 and above is for the priority levels of the priority queue. This is mostly for notifications and the differentiation between different importance. The current handling pauses lower priorities. 2 is a higher priority than 3 or above.
 
-
-
+  
 I recommend sound effects to have as few useless 0 volume sections at the beginning and end as possible, to allow better handling inside the queue. Should you wish to include music, never play the music in the priority queue unless notifications are supposed to play after the music track ended. These queues are shared with other scripts and audiopacks, so be considerate. In that regard I recommend allowing the player to decide the priorities.
 
 The priority level 1 will fill the available audio channels round robin, depending on the first channel available with the lowest amount of queued sound files. This means that if music were to play in channel 1, all other channels would require to have a file playing simultanously, in order for another sound file to queue behind the music in channel 1.
@@ -43,13 +42,27 @@ For the priority queue it is important to know how priorities are handled:
 Priority level 2 will always pause priority level 3+, while priority level 3 will always pause priority level 4+ and be paused by priority level 2 and so on.
 
 It is generally possible to change the behaviour from pause to interrupt or a mix of both, but it should be standardised behaviour across the board after enough feedback, as changing it on the fly would be much harder.
+
 ## Contributing
 If you want to create a fork, go ahead, don't be shy. If you want to contribute, contact me, preferably on Discord (ZarTaen#6409). Just keep in mind I have no clue what I'm, doing :D.
+
+## TODO List
+- Add option to discard specific queue (prio)
+- Rework channel-system to ID based for more granular control (Pause/Stop/Resume)
+- Specifying volume via lua, with a user-defined maximum.
+- Adding a way to not require the audiopacks.toml
+- Checking for and parsing out ../ as well as ..
+- Pause/Stop/Resume per ID
+- Optional Caching of Soundfiles
+
+
+## Additional Clarification
+Some have asked me to disclose that I am part of the Hyperion Corporation, so there you have it.
 
 ## License
 MIT License
 
-Copyright (c) 2021 ZarTaen
+Copyright (c) 2021 ZarTaen 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
