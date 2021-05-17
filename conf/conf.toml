@@ -1,19 +1,13 @@
-#This file is only here for prio_count (0-255), anything else will be ignored.
-#So if prio_count = 3, there are 3 levels of priority for the queue, from 2,3,4
-#0 is reserved for all stop and 1 is reserved for the channel audio sounds, for simultanous audio.
-#This does not decide on how many channels there are. The prio_count decides on the amount of priority levels past 1.
-#The intent was to make notifications with different priority possible.
-#I really dont think a lot of different priorities are needed.
-prio_count = 3
-
-#This setting is completely unrelated to prio_count. Every Prio with 1 will be assigned here to one of the sinks that are continuously open.
-#This allows for several sounds to be played at once, up to the channel limit. They work parallel to the prio level queue.
-#Do not go overboard with this value.
-channel_count = 16
-
-#Volume for the PriorityQueues in %. You could raise it above 100%, I strongly advise against it.
+#Volume for the Notifications in %. You could raise it above 100%, I strongly advise against it.
 #Reason that this is in the control of the enduser is partly to avoid troll attempts.
-priority_volume = 100
+#These define the maximum volume usable by a lua script and the default volumes.
+notification_volume = 100
 
-#Volume for the channels (Read, soundeffects) in %.
-channel_volume = 100
+#Volume for the channels (soundeffects) in %.
+concurrent_volume = 100
+
+#Volume for the queue
+queue_volume = 100
+
+#Volume % level for everything else while notification is sounding. Basically, a sound in the queue currently playing would be at 50% of the usual volume, if this value is 50
+notification_difference = 50
