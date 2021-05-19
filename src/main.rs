@@ -96,15 +96,17 @@ fn log_reader(to_thread:Sender<String>, mut file:BufReader<File>, watcher_receiv
                     file = result.0;
                     path = result.1;
                 }
-                if t>31 {
-                    if &line_buffer[0..20] == "<message>4176790050|" {
-                        if &line_buffer[(line_buffer.len()-13)..line_buffer.len()-2] != r#"|</message>"# {
+                if t>19 {
+                    //<message>sound_play|audiopacks/myvoicepack/greetings.wav|2</message>
+                    if &line_buffer[0..9] == "<message>" {
+                        if &line_buffer[(line_buffer.len()-12)..line_buffer.len()-2] != r#"</message>"# {
+
                             file.read_line(&mut line_buffer);
-                            while &line_buffer[(line_buffer.len()-13)..line_buffer.len()-2] != r#"|</message>"# {
+                            while &line_buffer[(line_buffer.len()-12)..line_buffer.len()-2] != r#"</message>"# {
                                 file.seek(SeekFrom::Start(last_position));
                                 line_buffer = String::new();
                                 file.read_line(&mut line_buffer);
-                                if &line_buffer[(line_buffer.len()-13)..line_buffer.len()-2] != r#"|</message>"# {
+                                if &line_buffer[(line_buffer.len()-12)..line_buffer.len()-2] != r#"</message>"# {
                                     file.read_line(&mut line_buffer);
                                 }
                             }
@@ -115,6 +117,7 @@ fn log_reader(to_thread:Sender<String>, mut file:BufReader<File>, watcher_receiv
                 }
             }
             Err(_) => {
+                println!("Error");
                 let result = file_watching(file, &watcher_receiver, path);
                 file = result.0;
                 path = result.1;
@@ -301,8 +304,9 @@ fn worker(thread_recv:Receiver<String>, audio_path_send:Sender<(SoundCommand, St
                 break;
             }
         };
-        let mut cleaned_string = original_string[20..(original_string.len() - 13)].replace(r#"&quot;"#, r#"""#);
-        cleaned_string = cleaned_string[1..cleaned_string.len() - 1].to_string();
+        let mut cleaned_string = original_string[9..(original_string.len() -12)].to_string();
+        //let mut cleaned_string = original_string[9..(original_string.len() - 12)].replace(r#"&quot;"#, r#"""#);
+        //cleaned_string = cleaned_string[1..cleaned_string.len() - 1].to_string();
         let mut strings = vec![];
         for str in cleaned_string.split('|'){
             strings.push(str.to_string());
