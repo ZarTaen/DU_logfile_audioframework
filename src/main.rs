@@ -14,8 +14,11 @@ use config::Config;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::{Acquire, Release};
 use rodio::{OutputStream, Sink, Decoder, OutputStreamHandle};
+use std::borrow::BorrowMut;
+use std::ops::DerefMut;
+use std::mem::take;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 enum SoundCommand{
     Play,
     Notification,
@@ -25,11 +28,13 @@ enum SoundCommand{
     Stop,
     Resume
 }
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 ///Input Handling for shutting down the program.
 fn end_this_world(electric_atomic_seppuku:Arc<AtomicBool>){
     loop {
         let mut s= String::new();
+        println!("Version: v{}", VERSION);
         print!("To end the program, press y and confirm with enter: \n");
         let _=stdout().flush();
         match stdin().read_line(&mut s) {
@@ -325,6 +330,7 @@ fn worker(thread_recv:Receiver<String>, audio_path_send:Sender<(SoundCommand, St
         //println!("{:?}", strings);
         //handled like this, in order to allow for more modes later and making it extensible in some way,
         //albeit not without a lot of more work
+        //println!("Worker: {:?}", strings);
         match modus.as_str() {
             "sound_play" => {
                 file_to_audio_handling(SoundCommand::Play, var_amount, strings, &audio_path_send, concurrent_volume.clone());
@@ -382,18 +388,18 @@ fn file_to_audio_handling(command: SoundCommand, var_amount: usize, strings: Vec
     audio_path_send.send((command, strings[1].to_string(), strings[2].to_string(), vol));
 }
 
-fn control_to_audio_handling(command: SoundCommand, var_amount: usize, strings: Vec<String>, audio_path_send:&Sender<(SoundCommand, String, String, f32)>){
+fn control_to_audio_handling(command: SoundCommand, var_amount: usize, strings: Vec<String>, audio_path_send:&Sender<(SoundCommand, String, String, f32)>) {
     let mut vol = 0 as f32;
     let string1;
     match var_amount {
-        x if x==1 ||x==2 => {
+        x if x == 1 || x == 2 => {
             if command == SoundCommand::Volume {
                 println!("An argument is missing for volume.");
                 return
             }
             if x == 2 {
                 string1 = strings[1].to_string();
-            }else {
+            } else {
                 string1 = "".to_string();
             }
         },
@@ -402,12 +408,12 @@ fn control_to_audio_handling(command: SoundCommand, var_amount: usize, strings: 
                 println!("There are too many arguments.");
                 return
             }
-            vol = match strings[2].to_string().parse::<u8>(){
+            vol = match strings[2].to_string().parse::<u8>() {
                 Ok(mut t) => {
-                    if t >100{
+                    if t > 100 {
                         t = 100;
                     }
-                    t as f32/100.0
+                    t as f32 / 100.0
                 }
                 Err(_) => {
                     println!("Wrong argument or invalid range for volume, no changes.");
@@ -416,9 +422,9 @@ fn control_to_audio_handling(command: SoundCommand, var_amount: usize, strings: 
             };
             string1 = strings[1].to_string();
         }
-        _ => {return}
+        _ => { return }
     }
-    audio_path_send.send((command,  "".to_string(), string1, vol));
+    audio_path_send.send((command, "".to_string(), string1, vol));
 }
 
 struct AudioEntry {
@@ -445,17 +451,14 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
     let mut notification_sink = Sink::try_new(&stream_handle).unwrap();
     let mut queue_sink = Sink::try_new(&stream_handle).unwrap();
 
+    let mut playing_notification: Option<String> = None;
+    let mut playing_queue: Option<String> = None;
+
     //The paused_vecs take tuples with the id at 0 and the paused sink at 1.
     let mut paused_notifications:Vec<(String, Sink)> = vec![];
     let mut paused_queue:Vec<(String, Sink)> = vec![];
 
-    let mut active_notification= false;
-    let mut active_queue = false;
-    let mut discard_on_load_notification = false;
-    let mut discard_on_load_queue = false;
-
     loop{
-
         //This checks for the end of the program via command.
         if electric_atomic_seppuku.load(Acquire){
             queue_sink.stop();
@@ -522,16 +525,20 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                         };
                     }
                     SoundCommand::Notification => {
-                        discard_on_load_notification = queue_decision(t, &mut sound_map, &mut notification_stack, &mut paused_notifications, &notification_sink, discard_on_load_notification, &stream_handle);
-                    }
+                        let result =  queue_decision(t, &mut sound_map, &mut notification_stack, &mut paused_notifications, notification_sink, &stream_handle, playing_notification);
+                        playing_notification = result.0;
+                        notification_sink = result.1;
+                       }
                     SoundCommand::Queue => {
-                        discard_on_load_queue = queue_decision(t, &mut sound_map, &mut queue_stack, &mut paused_queue,&notification_sink , discard_on_load_queue, &stream_handle);
+                        let result = queue_decision(t, &mut sound_map, &mut queue_stack, &mut paused_queue, queue_sink , &stream_handle, playing_queue);
+                        playing_queue = result.0;
+                        queue_sink = result.1;
                     }
                     //The volume will be set again in the loop below anyway.
                     SoundCommand::Volume => {
                         match sound_map.get_mut(t.2.as_str()){
                             None => {
-                                println!("The ID does not exist.");
+                                println!("The ID {} does not exist.", t.2.as_str());
                             }
                             Some(k) => {
                                 match k.sound_command{
@@ -541,14 +548,24 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                                     }
                                     SoundCommand::Notification => {
                                         k.volume = t.3;
-                                        if notification_stack[0].as_str() == t.2.as_str(){
-                                            notification_sink.set_volume(k.volume);
+                                        match &playing_notification {
+                                            None => {}
+                                            Some(l) => {
+                                                if t.2.as_str() == l.as_str(){
+                                                    notification_sink.set_volume(k.volume);
+                                                }
+                                            }
                                         }
                                     }
                                     SoundCommand::Queue => {
                                         k.volume = t.3;
-                                        if queue_stack[0].as_str() == t.2.as_str(){
-                                            queue_sink.set_volume(t.3*active_notification_modifier);
+                                        match &playing_queue {
+                                            None => {}
+                                            Some(l) => {
+                                                if t.2.as_str() == l.as_str(){
+                                                    queue_sink.set_volume(k.volume);
+                                                }
+                                            }
                                         }
                                     }
                                     _ => {
@@ -564,72 +581,71 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                                 i.1.sink.pause();
                                 i.1.pause_state = true;
                             }
-
-                            if notification_stack.len()>0 {
-                                //first thing, the currently active notification is pushed into the paused_notifications.oof.jpeg.gif.bat.tif
-                                notification_sink.pause();
-                                paused_notifications.push((notification_stack[0].clone(),notification_sink));
+                            match &playing_notification{
+                                None => {
+                                }
+                                Some(t) => {
+                                    notification_sink.pause();
+                                    paused_notifications.push((t.to_string(), notification_sink));
+                                    playing_notification = None;
+                                    notification_sink = Sink::try_new(&stream_handle).unwrap();
+                                }
+                            }
+                            match &playing_queue{
+                                None => {}
+                                Some(t) => {
+                                    queue_sink.pause();
+                                    paused_queue.push((t.to_string(), queue_sink));
+                                    playing_queue = None;
+                                    queue_sink = Sink::try_new(&stream_handle).unwrap();
+                                }
+                            }
+                            while notification_stack.len() > 0{
+                                let entry = sound_map.get(notification_stack[0].as_str()).unwrap();
+                                //the entry is gained, and the file is opened. If the file cant be opened, the entry is discarded in soundmap and notification_stack, and then the loop is continued.
+                                let source = match open_audio_file(entry.path.clone()){
+                                    Ok(t) => {
+                                        t
+                                    },
+                                    Err(e) => {
+                                        println!("{}",e);
+                                        sound_map.remove(notification_stack[0].as_str());
+                                        notification_stack.remove(0);
+                                        continue
+                                    }
+                                };
+                                let sink = Sink::try_new(&stream_handle).unwrap();
+                                sink.set_volume(entry.volume);
+                                sink.pause();
+                                sink.append(source);
+                                paused_notifications.push((notification_stack[0].clone(),sink));
                                 notification_stack.remove(0);
-                                //it is then removed.
-                                notification_sink = Sink::try_new(&stream_handle).unwrap();
-                                //a new sink is created.
-
-                                //and then, every single entry inside notification_stack is pushed into the paused_notifications, by order.
-                                while notification_stack.len()>0{
-                                    let entry = sound_map.get(notification_stack[0].as_str()).unwrap();
-                                    //the entry is gained, and the file is opened. If the file cant be opened, the entry is discarded in soundmap and notification_stack, and then the loop is continued.
-                                    let source = match open_audio_file(entry.path.clone()){
-                                        Ok(t) => {
-                                            t
-                                        },
-                                        Err(e) => {
-                                            println!("{}",e);
-                                            sound_map.remove(notification_stack[0].as_str());
-                                            notification_stack.remove(0);
-                                            continue
-                                        }
-                                    };
-                                    let sink = Sink::try_new(&stream_handle).unwrap();
-                                    sink.set_volume(entry.volume);
-                                    sink.pause();
-                                    sink.append(source);
-                                    paused_notifications.push((notification_stack[0].clone(),sink));
-                                    notification_stack.remove(0);
-                                }
                             }
-
-                            if queue_stack.len()>0 {
-                                queue_sink.pause();
-                                paused_queue.push((queue_stack[0].clone(),queue_sink));
+                            while queue_stack.len() > 0{
+                                let entry = sound_map.get(queue_stack[0].as_str()).unwrap();
+                                //the entry is gained, and the file is opened. If the file cant be opened, the entry is discarded in soundmap and notification_stack, and then the loop is continued.
+                                let source = match open_audio_file(entry.path.clone()){
+                                    Ok(t) => {
+                                        t
+                                    },
+                                    Err(e) => {
+                                        println!("{}",e);
+                                        sound_map.remove(queue_stack[0].as_str());
+                                        queue_stack.remove(0);
+                                        continue
+                                    }
+                                };
+                                let sink = Sink::try_new(&stream_handle).unwrap();
+                                sink.set_volume(entry.volume);
+                                sink.pause();
+                                sink.append(source);
+                                paused_queue.push((queue_stack[0].clone(),sink));
                                 queue_stack.remove(0);
-                                queue_sink = Sink::try_new(&stream_handle).unwrap();
-
-                                while queue_stack.len()>0{
-                                    let entry = sound_map.get(queue_stack[0].as_str()).unwrap();
-                                    let source = match open_audio_file(entry.path.clone()){
-                                        Ok(t) => {
-                                            t
-                                        },
-                                        Err(e) => {
-                                            println!("{}",e);
-                                            sound_map.remove(queue_stack[0].as_str());
-                                            queue_stack.remove(0);
-                                            continue
-                                        }
-                                    };
-                                    let sink = Sink::try_new(&stream_handle).unwrap();
-                                    sink.set_volume(entry.volume*active_notification_modifier);
-                                    sink.pause();
-                                    sink.append(source);
-                                    paused_queue.push((queue_stack[0].clone(),sink));
-                                    queue_stack.remove(0);
-                                }
                             }
-
                         } else {
                             match sound_map.get_mut(t.2.as_str()) {
                                 None => {
-                                    println!("The ID does not exist.");
+                                    println!("The ID {} does not exist.", t.2.as_str());
                                 }
                                 Some(k) => {
                                     match k.sound_command {
@@ -638,21 +654,33 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                                             k.pause_state = true;
                                         }
                                         SoundCommand::Notification => {
-                                            if notification_stack[0].as_str() == t.2.as_str() {
-                                                notification_sink.pause();
-                                                paused_notifications.push((notification_stack[0].clone(),notification_sink));
-                                                notification_stack.remove(0);
-                                                notification_sink = Sink::try_new(&stream_handle).unwrap();
+                                            match &playing_notification {
+                                                None => {}
+                                                Some(l) => {
+                                                    if l.as_str() == t.2.as_str(){
+                                                        notification_sink.pause();
+                                                        paused_notifications.push((l.to_string(), notification_sink));
+                                                        playing_notification = None;
+                                                        notification_sink = Sink::try_new(&stream_handle).unwrap();
+                                                    }
+                                                }
                                             }
+                                            //All other entries will be handled in the handling function, where a pause check immediately moves a paused sink instance to the paused vectors.
                                             k.pause_state = true;
                                         }
                                         SoundCommand::Queue => {
-                                            if queue_stack[0].as_str() == t.2.as_str() {
-                                                queue_sink.pause();
-                                                paused_queue.push((queue_stack[0].clone(), queue_sink));
-                                                queue_stack.remove(0);
-                                                queue_sink = Sink::try_new(&stream_handle).unwrap();
+                                            match &playing_queue {
+                                                None => {}
+                                                Some(l) => {
+                                                    if l.as_str() == t.2.as_str(){
+                                                        queue_sink.pause();
+                                                        paused_queue.push((l.to_string(), queue_sink));
+                                                        playing_queue = None;
+                                                        queue_sink = Sink::try_new(&stream_handle).unwrap();
+                                                    }
+                                                }
                                             }
+                                            //All other entries will be handled in the handling function, where a pause check immediately moves a paused sink instance to the paused vectors.
                                             k.pause_state = true;
                                         }
                                         _ => {
@@ -670,26 +698,44 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                             paused_queue.clear();
                             notification_stack.clear();
                             queue_stack.clear();
+                            //The new sinks are there because stop is delayed, the sink still returns that its not empty for a bit, resulting in weird race condition edgecases.
                             notification_sink.stop();
+                            notification_sink = Sink::try_new(&stream_handle).unwrap();
                             queue_sink.stop();
+                            queue_sink = Sink::try_new(&stream_handle).unwrap();
+                            playing_notification = None;
+                            playing_queue = None;
                         } else {
                             sound_map.remove(t.2.as_str());
-                            for i in 0..notification_stack.len() {
-                                if notification_stack[i].as_str() == t.2.as_str(){
-                                    if i == 0 {
+
+                            match &playing_notification {
+                                None => {}
+                                Some(l) => {
+                                    if l.as_str() == t.2.as_str(){
+                                        playing_notification = None;
                                         notification_sink.stop();
-                                        discard_on_load_notification = false;
-                                    }
+                                        notification_sink = Sink::try_new(&stream_handle).unwrap();
+                                    };
+                                }
+                            }
+                            match &playing_queue {
+                                None => {}
+                                Some(l) => {
+                                    if l.as_str() == t.2.as_str(){
+                                        playing_queue = None;
+                                        queue_sink.stop();
+                                        queue_sink = Sink::try_new(&stream_handle).unwrap();
+                                    };
+                                }
+                            }
+                            for i in 0..notification_stack.len(){
+                                if notification_stack[i].as_str() == t.2.as_str(){
                                     notification_stack.remove(i);
                                     break
                                 }
                             }
-                            for i in 0..queue_stack.len() {
+                            for i in 0..queue_stack.len(){
                                 if queue_stack[i].as_str() == t.2.as_str(){
-                                    if i == 0 {
-                                        queue_sink.stop();
-                                        discard_on_load_queue = false;
-                                    }
                                     queue_stack.remove(i);
                                     break
                                 }
@@ -697,15 +743,18 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                             for i in 0..paused_notifications.len() {
                                 if paused_notifications[i].0 == t.2.as_str(){
                                     paused_notifications.remove(i);
+                                    break
                                 }
                             }
                             for i in 0..paused_queue.len() {
                                 if paused_queue[i].0 == t.2.as_str(){
                                     paused_queue.remove(i);
+                                    break
                                 }
                             }
                         }
                     }
+                    //The handler handles the resuming of queued stuff.
                     SoundCommand::Resume => {
                         if t.2.as_str() == "" {
                             for i in &mut sound_map {
@@ -715,7 +764,7 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                         } else {
                             match sound_map.get_mut(t.2.as_str()) {
                                 None => {
-                                    println!("The ID does not exist.");
+                                    println!("The ID {} does not exist.", t.2.as_str());
                                 }
                                 Some(k) => {
                                     match k.sound_command {
@@ -742,20 +791,20 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
             Err(_) => {}
         };
 
-        let result = queue_handling(&mut notification_sink, &mut notification_stack, &mut sound_map, &mut paused_notifications, discard_on_load_notification, 1.0, &stream_handle);
-        discard_on_load_notification = result.0;
-        active_notification = result.1;
-
-        if active_notification {
-            active_notification_modifier = notification_difference;
-        }else {
-            active_notification_modifier = 1.0;
+        let result = queue_handling(notification_sink, &mut notification_stack, &mut sound_map, &mut paused_notifications,  1.0, &stream_handle, playing_notification);
+        notification_sink = result.0;
+        playing_notification = result.1;
+        match playing_notification {
+            None => {
+                active_notification_modifier = 1.0;
+            }
+            Some(_) => {
+                active_notification_modifier = notification_difference;
+            }
         }
-        let result = queue_handling(&mut queue_sink, &mut queue_stack, &mut sound_map,&mut paused_queue, discard_on_load_queue,active_notification_modifier, &stream_handle);
-        discard_on_load_queue = result.0;
-        active_queue = result.1;
-
-
+        let result = queue_handling(queue_sink, &mut queue_stack, &mut sound_map,&mut paused_queue, active_notification_modifier, &stream_handle, playing_queue);
+        queue_sink = result.0;
+        playing_queue = result.1;
         let mut delete_entries = vec![];
         //This iterates over the sound_map and checks for empty sinks.
         //Empty sinks are collected and then removed.
@@ -783,33 +832,42 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
 
 ///How an entry inside the HashMap is handled, depending on whether it exists or not. Reason why discard is necessary is because an ID of a currently running soundfile could be overwritten.
 ///That currently running soundfile would be stopped, and entry 0 would be removed, with a changed discard, so the next 0 entry isnt discarded, whatever it may be.
-fn queue_decision(values:(SoundCommand, String, String, f32), sound_map:&mut HashMap<String, AudioEntry>, queue:&mut Vec<String>, paused_queue:&mut Vec<(String, Sink)>,  queue_sink:&Sink, mut discard:bool, stream_handle:&OutputStreamHandle) -> bool{
+fn queue_decision(values:(SoundCommand, String, String, f32), sound_map:&mut HashMap<String, AudioEntry>, queue:&mut Vec<String>, paused_queue:&mut Vec<(String, Sink)>, mut queue_sink:Sink, stream_handle:&OutputStreamHandle, mut currently_playing: Option<String>) -> (Option<String>, Sink){
     if sound_map.contains_key(values.2.as_str()){
         let entry = sound_map.get_mut(values.2.as_str()).unwrap();
         entry.volume = values.3;
         entry.path = values.1;
         entry.sound_command = values.0;
-        //Should it be played right now, another one is pushed at the end. Should it be queued, but not played right now, its left alone.
-        //Should there be no instance queued, then this entry shouldnt exist anymore!
+        entry.pause_state = false;
         for i in 0..paused_queue.len(){
             if paused_queue[i].0.as_str() == values.2.as_str(){
                 paused_queue.remove(i);
             }
+            break
         }
-
-        for i in 0..queue.len() {
-            if queue[i].as_str() == values.2.as_str() {
-                queue.remove(i);
-                if i == 0 {
-                    if discard {
+        match &currently_playing{
+            None => {}
+            Some(t) => {
+                //This means it is quite literally currently playing. If it is, its stopped. If its at least supposed to have been played, the currently_playing is set to None.
+                if t.as_str()==values.2.as_str(){
+                    if !queue_sink.empty(){
                         queue_sink.stop();
-                        discard = false;
+                        queue_sink = Sink::try_new(&stream_handle).unwrap();
                     }
+                    //This avoids that the soundmap entry will be removed in the handling function
+                    currently_playing = None;
                 }
             }
         }
+        //Here, the currently_playing could either be the just now about to be added ID, or something else. Either way, the queue_handling should handle it.
+        //The entry is removed, should it have been queued before.
+        for i in 0..queue.len() {
+            if queue[i].as_str() == values.2.as_str() {
+                queue.remove(i);
+            }
+        }
         queue.push(values.2);
-        //The new file is then appended and plays.
+        //The new file is then appended.
     }else{
         let sink = Sink::try_new(stream_handle).unwrap();
         let entry = AudioEntry {
@@ -823,132 +881,89 @@ fn queue_decision(values:(SoundCommand, String, String, f32), sound_map:&mut Has
         queue.push(values.2.clone());
         sound_map.insert(values.2, entry);
     };
-    discard
+    (currently_playing, queue_sink)
 }
 
 ///Handles the queue with pausable entries, etc. it returns the first bool for the current discard state, and the second bool for currently playing (in order to allow the notification volume change!)
-fn queue_handling(audio_sink:&mut Sink, audio_vec:&mut Vec<String>, sound_map:&mut HashMap<String, AudioEntry>, paused_vec:&mut Vec<(String, Sink)>, mut discard: bool, volume_multiplier:f32, stream_handle:&OutputStreamHandle) -> (bool,bool){
-    let mut flag = false;
-    let mut playing_entry = false;
-
-    if audio_sink.empty(){
-        //This checks whether the audio_vec isnt empty, and if not, whether it was the last played soundfile. if yes, its discarded for good measure.
-        if audio_vec.len()>0 {
-            if discard {
-                sound_map.remove(audio_vec[0].as_str());
-                audio_vec.remove(0);
-            }//at this point the discard is still true!
-        }
-
-        //next, the paused_notifications are checked. If a sound was paused, but then stopped, it should have been removed via stop aleady, so that case shouldnt need to be handled here
-        for mut i in 0..paused_vec.len() {
-            //In the scenario that the sink is inherently empty to begin with, the notification is immediately removed with the sound_map entry. The iterator is then set back by 1, and the loop is continued.
-            if paused_vec[i].1.empty(){
-                sound_map.remove(paused_vec[i].0.as_str());
-                paused_vec.remove(i);
-                i = i-1;
-                continue
+fn queue_handling(mut audio_sink: Sink, audio_vec:&mut Vec<String>, sound_map:&mut HashMap<String, AudioEntry>, paused_vec:&mut Vec<(String, Sink)>, volume_multiplier:f32, stream_handle:&OutputStreamHandle, mut currently_playing: Option<String>) -> (Sink, Option<String>){
+    if audio_sink.empty() == true{
+        //This cleans up the last played audiofile. the currently_playing is never Some when the file still needs to play. It is only Some when it is playing or has been played.
+        match currently_playing{
+            None => {
             }
-            //
+            Some(t) => {
+                sound_map.remove(&t);
+                currently_playing = None;
+            }
+        }
+        for mut i in 0..paused_vec.len(){
             let sound_entry = sound_map.get(paused_vec[i].0.as_str()).unwrap();
-            //if the state is now unpaused, the notification should be played next. The loop for the other paused_notifications is then broken.
             if sound_entry.pause_state == false {
-                //whether it already plays or not doesnt matter, if its empty, it would have been removed already.
-                paused_vec[i].1.set_volume(sound_entry.volume*volume_multiplier);
-                paused_vec[i].1.play();
-                discard = false;
-                flag = true;
-                playing_entry = true;
-                break;
-            }else{
-                continue
-            }
-            //okay, we have a discard bool and a audio_vec, with an empty notification_sink, but a playing paused_notification. what now?
-            //during the next loop, the notification_sink will be empty again, but the audio_vec might or might not be empty. But either way, the audio_vec[0] has not been loaded into sink yet.
-            //so we set the discard_on_load_notification to false.
-        }
-        //However, should there be no paused_notifications, or no paused_notifications to be played, the discard_bool is now true.
-        //So, because we may or may not have removed an entry before, regardless, the length needs checked again. suppose, there is still a new audio_vec entry.
-
-        //First we check whether the flag has been set because a paused notification is playing, no? great.
-        if !flag {
-            while audio_vec.len()>0{
-                //Great, we removed the old audio_vec entry, checked for paused notifications, and still have an entry. This means, we can play the next entry!
-                //well, now we get into a small pickle. we have to check whether it is supposed to be paused!
-                let entry = sound_map.get(audio_vec[0].as_str()).unwrap();
-                //Whether it is paused or not doesnt matter, its loaded into the sink first anyway.
-                let source = match open_audio_file(entry.path.clone()){
-                    Ok(t) => {
-                        t
-                    },
-                    Err(e) => {
-                        println!("{}",e);
-                        //Because it failed, the entry is removed, here, as well as from sound_map!
-                        sound_map.remove(audio_vec[0].as_str());
-                        audio_vec.remove(0);
-                        continue
-                    }
-                };
-                //now we got a source, all thats left is to load it into the sink! No, not quite.
-                //If its paused, a sink is created, the file is appended and its paused. Now it doesnt touch the notification_sink at all, it will be directly pushed to the paused_notifications!
-                //After it has been pushed, the audio_vec is one entry smaller, this is why its a loop.
-                if entry.pause_state {
-                    let sank = Sink::try_new(stream_handle).unwrap();
-                    sank.set_volume(entry.volume*volume_multiplier);
-                    sank.pause();
-                    sank.append(source);
-                    sank.pause();
-                    //test later whether an empty sink can be paused.
-                    paused_vec.push((audio_vec[0].clone(), sank));
-                    audio_vec.remove(0);
-                }else{
-                    //so, the entry was not paused, right? good. Keep in mind, the discard on empty is still true, for when this is going to be empty.
-                    //the upside is, we are close to a full circle. the volume is set and the file is appended. At last, the loop is broken because we dont care about other notifications just yet.
-                    audio_sink.set_volume(entry.volume*volume_multiplier);
-                    audio_sink.append(source);
+                //The below is a sanity check. If an entry is unpaused, as you can see literally here, the entry is removed as well.
+                if !paused_vec[i].1.empty(){
+                    currently_playing = Some(paused_vec[i].0.clone());
+                    audio_sink = paused_vec.remove(i).1;
+                    audio_sink.set_volume(sound_entry.volume*volume_multiplier);
                     audio_sink.play();
-                    playing_entry = true;
-                    flag = true;
-                    discard = true;
-                    break
+                    return (audio_sink, currently_playing);
+                }else { //Included garbage collection, which should literally never happen
+                    i=i-1;
+                    sound_map.remove(paused_vec[i].0.as_str());
+                    paused_vec.remove(i);
                 }
             }
         }
-        if !flag{
-            discard = false;
+        while audio_vec.len() > 0 {
+            let entry = sound_map.get(audio_vec[0].as_str()).unwrap();
+            let source = match open_audio_file(entry.path.clone()) {
+                Ok(t) => {
+                    t
+                },
+                Err(e) => {
+                    println!("{}", e);
+                    //Because it failed, the entry is removed, here, as well as from sound_map!
+                    sound_map.remove(audio_vec[0].as_str());
+                    audio_vec.remove(0);
+                    continue
+                }
+            };
+            if entry.pause_state {
+                let sank = Sink::try_new(stream_handle).unwrap();
+                sank.set_volume(entry.volume*volume_multiplier);
+                sank.pause();
+                sank.append(source);
+                sank.pause();
+                //test later whether an empty sink can be paused.
+                paused_vec.push((audio_vec[0].clone(), sank));
+                audio_vec.remove(0);
+            }else{
+                audio_sink.set_volume(entry.volume*volume_multiplier);
+                audio_sink.append(source);
+                audio_sink.play();
+                currently_playing = Some(audio_vec[0].to_owned());
+                audio_vec.remove(0);
+                break;
+            }
         }
-    }else { //this is important to implement volume changes while we are at it, in one swoop.
-        let entry = sound_map.get(audio_vec[0].as_str()).unwrap();
+    }else {
+        let entry = sound_map.get(currently_playing.clone().unwrap().as_str()).unwrap();
         audio_sink.set_volume(entry.volume*volume_multiplier);
     }
-    //What a journey just for checking the 2 queues. We checked if the audio_sink is empty. If it was, we checked whether the last 0 is supposed to be jettisoned, if yes, it was.
-    //Then we checked for any entries in the paused queue. They all have their own very special dedicated sink. So each entry is first checked if empty. If they were empty, they would be removed. And the next one would be checked.
-    //If one wasnt empty, it was checked whether it was still supposed to be paused. If it was, the next one would be checked.
-    //If one wasnt empty, and it wasnt supposed to be paused, a flag is set, the discard for the next audio_vec[0] is set to false. If it was already playing, no difference.
-
-    //The paused entries were finished to be checked. If one is playing, now the audio_vec[0] and audio_sink will be ignored, and next round the circle continues,
-    // with the sink being empty, the audio_vec[0] not being discarded and the paused ones being checked again, until the currently playing one is empty and its the next ones turn.
-
-    //If no paused entry is playing, the flag isnt set. So, while the audio_sink is not empty, the audio_vec[0] will be tried for an opened audiofile.
-    // Should that fail? discard the current one manually with the sound_map entry, and onto the next one, if there is one.
-    // Should there magically be no sound to be played in the audio_vec (error or amount of entries), then there is the case where the discard is still active for newly incoming audio_vec entries. We dont want that.
-    // This is why, in case a file is played, the flag is set to true, for a true discard, and otherwise stays false, for no discard. So, when a newly fresh entry comes, it isnt automatically discarded and instead played!
-    // Here we are, now the queues are managed. Im not going to rewrite this.
-    (discard,playing_entry)
+    (audio_sink,currently_playing)
 }
 
 ///Opens audio file and returns a source or returns an error if it fails.
 fn open_audio_file(path: String) -> Result<Decoder<BufReader<File>>, String> {
-    let audio_file = BufReader::new(match File::open(path){
+    let audio_file = BufReader::new(match File::open(path.clone()){
         Ok(t) => {t}
         Err(e) => {
-            return Err(e.to_string())
+            return Err(format!("{} at Path: {}",e.to_string(),path))
         }
     });
     let source = match Decoder::new(audio_file){
         Ok(t) => { t }
         Err(e) => {
-            return Err(e.to_string())
+            return Err(format!("{} at Path: {}",e.to_string(),path))
         }
     };
     Ok(source)
