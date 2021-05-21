@@ -56,6 +56,9 @@ Lua Commands have been standardised with the help of D.Mentia.
 A lot of huge rewriting for the audio logic, to allow specific behaviour of stuff in my implementation.
 The removal of the audiopacks.toml (It was a bad idea with a good intention).
 
+## Video of it in Action
+https://cdn.hyperion-corporation.de/userstorages/cafa3fd0-e7cd-4a50-84a5-552f0b731fcb/music_demonstration.mp4
+
 ## Additional Clarification
 Some have asked me to disclose that I am part of the Hyperion Corporation, so there you have it.
 
