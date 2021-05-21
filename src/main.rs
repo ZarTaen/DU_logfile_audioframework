@@ -104,7 +104,7 @@ fn log_reader(to_thread:Sender<String>, mut file:BufReader<File>, watcher_receiv
                             file.read_line(&mut line_buffer);
                             if line_buffer.len()>19{
                                 if &line_buffer[(line_buffer.len()-12)..line_buffer.len()-2] == r#"</message>"# {
-                                    println!("Not a message.");
+                                    //println!("Not a message.");
                                     to_thread.send(line_buffer);
                                 }
                             }
@@ -126,30 +126,6 @@ fn log_reader(to_thread:Sender<String>, mut file:BufReader<File>, watcher_receiv
     }
     return_value
 }
-
-/*
-  while &line_buffer[(line_buffer.len()-12)..line_buffer.len()-2] != r#"</message>"# {
-                                //TODO: Found a stall bug for the message right after the mesh.url. The problem consists of not expecting several lines. The file.seek might be the issue
-                                // <message>did receive construct_id: 3158610
-                                // mesh_url: "https://mesh-prod.novaquark.com/voxels/constructs/3158610/mesh.glb?async=1&version=2706"
-                                // version: 2706
-                                // publishDate {
-                                //   seconds: 1621452351
-                                //   nanos: 934881131
-                                // }
-                                // mesh_object_url: "https://mesh-prod.novaquark.com/voxels/constructs/3158610/meshData?async=1&version=2706"</message>
-                                println!("In Loop, phrase to check is: {} against </message>", &line_buffer[(line_buffer.len()-12)..line_buffer.len()-2]);
-                                //file.seek(SeekFrom::Start(last_position));
-                                line_buffer = String::new();
-                                file.read_line(&mut line_buffer);
-                                if &line_buffer[(line_buffer.len()-12)..line_buffer.len()-2] != r#"</message>"# {
-                                    file.read_line(&mut line_buffer);
-                                }
-                            }
-
-
- */
-
 
 ///Either returns the file unchanged, or returns an updated file from an updated Path.
 ///Should the readline have failed, then the watcher would see when a new.
@@ -336,7 +312,7 @@ fn worker(thread_recv:Receiver<String>, audio_path_send:Sender<(SoundCommand, St
                 break;
             }
         };
-        println!("{}", original_string);
+        //println!("{}", original_string);
         let mut cleaned_string = original_string[9..(original_string.len() -12)].to_string();
         //let mut cleaned_string = original_string[9..(original_string.len() - 12)].replace(r#"&quot;"#, r#"""#);
         //cleaned_string = cleaned_string[1..cleaned_string.len() - 1].to_string();
@@ -346,7 +322,7 @@ fn worker(thread_recv:Receiver<String>, audio_path_send:Sender<(SoundCommand, St
         };
         let var_amount = strings.len();
         let modus = strings[0].to_string();
-        println!("{:?}", strings);
+        //println!("{:?}", strings);
         //handled like this, in order to allow for more modes later and making it extensible in some way,
         //albeit not without a lot of more work
         match modus.as_str() {
