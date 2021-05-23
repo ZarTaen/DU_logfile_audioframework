@@ -3,14 +3,15 @@
 DU_logfile_audioframework is a logfile reader for Dual Universe that allows to play audiofiles via Lua Commands inside the game.
 
 ## Installation
-Download the .zip and extract it to a location of your choice. Make sure the "conf" and "audiopacks" folders are in the same directory as the .exe.
+Download the .zip and extract it to a location of your choice. Make sure the "conf" folder is in the same directory as the .exe.
 Be careful about the source of the files should you get them somewhere else, as I cannot guarantee they are not tampered with.
 You can also take a look at the implementation of D.Mentia here:
 
 https://github.com/Dimencia/DU-Audio-Sharp
 
 ## Usage for Endusers
-In order to install Audiopacks, simply add the whole folder into the "audiopacks" directory. Again, be careful where you source audiopacks from, for the same reason as above.
+In order to install Audiopacks, simply add the whole folder into the "audiopacks" directory, or wherever the creator in question thinks the files are. Again, be careful where you source audiopacks from, for the same reason as above.
+You have a conf.toml file inside the conf folder that allows to change some volume settings, should you want that.
 
 ## Usage for Creators
 For supported audio formats, refer to rodio and the included audio libraries.
