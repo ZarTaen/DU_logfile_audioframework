@@ -49,6 +49,7 @@ If you want to create a fork, go ahead, don't be shy. If you want to contribute,
 ## TODO List
 - Optional Caching of Soundfiles
 - Generating a default conf file, should it not be available.
+- Make relative path a default option, with absolute path something the user has to enable explicitly (reduces ways to troll).
 
 Stuff moved so fast, that a lot of the things in my old TODO were obsolete and others are already implemented.
 
