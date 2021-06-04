@@ -1,0 +1,44 @@
+on:
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    name: Rust The Ruilder
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Compile
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+      - name: Github Rusty Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v1.0.6
+          release_name: auto-build v1.0.6| What you see is what you get
+          draft: true
+          prerelease: false
+      - name: Upload release
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: target\release\DU_logfile_audioframework.exe
+          asset_name: DU_logfile_audioframework_106.exe
+          asset_content_type: application/zip
+      - name: Publish release
+        uses: eregon/publish-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          release_id: ${{ steps.create_release.outputs.id }}

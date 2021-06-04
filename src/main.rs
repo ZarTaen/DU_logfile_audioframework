@@ -3,20 +3,21 @@ use std::ffi::OsString;
 use std::time::{Duration, UNIX_EPOCH, Instant};
 use std::io::{BufReader, SeekFrom, Seek, BufRead, Write, stdin, stdout, Error};
 use std::fs::File;
-use std::thread;
+use std::{thread, fs};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::sleep;
 use app_dirs::{get_app_dir, AppDataType, AppInfo};
 use notify::{RawEvent, Op, raw_watcher, RecursiveMode, Watcher};
 use std::sync::atomic::AtomicBool;
 use std::collections::HashMap;
-use config::Config;
+use config::{Config, FileFormat, ConfigError};
 use std::sync::Arc;
 use std::sync::atomic::Ordering::{Acquire, Release};
 use rodio::{OutputStream, Sink, Decoder, OutputStreamHandle};
 use std::borrow::BorrowMut;
 use std::ops::DerefMut;
 use std::mem::take;
+use std::path::Path;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum SoundCommand{
@@ -178,12 +179,45 @@ fn main() {
     let mut config = Config::default();
     match config.merge(config::File::with_name("conf/conf.toml")){
         Ok(_) => {}
-        Err(_) => {
-            //this happens if a file doesnt exist -> so it has to be generated, right?
-            //TODO: Generate the conf.toml with default values.
+        Err(e) => {
+            println!("{}", e);
+            if !Path::exists("conf".as_ref()) {
+                Path::new("conf");
+            }
+            let mut file = match File::create(r#"conf/conf.toml"#){
+                Ok(t) => {
+                    println!("New conf.toml created.");
+                    t
+                }
+                Err(e) => {
+                    panic!("The creation of conf.toml failed: {}",e);
+                }
+            };
+            file.write(r#"#Volume for the Notifications in %. You could raise it above 100%, I strongly advise against it.
+#Reason that this is in the control of the enduser is partly to avoid troll attempts.
+#These define the maximum volume usable by a lua script and the default volumes.
+notification_volume = 100
 
+#Volume for the channels (soundeffects) in %.
+concurrent_volume = 100
+
+#Volume for the queue
+queue_volume = 100
+
+#Volume % level for everything else while notification is sounding. Basically, a sound in the queue currently playing would be at 50% of the usual volume, if this value is 50
+notification_difference = 50"#.as_bytes());
+            match config.merge(config::File::with_name("conf/conf.toml")){
+                Ok(_) => {}
+                Err(_) => {
+                    println!("The config failed with default settings. Contact the author and give him an ass whooping.");
+                }
+            }
         }
     }
+    if !Path::exists("audiopacks".as_ref()) {
+        Path::new("audiopacks");
+    }
+
     let mut settings_names = vec![];
     settings_names.push("notification_volume");
     settings_names.push("concurrent_volume");
