@@ -23,8 +23,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v1.0.6
-          release_name: auto-build v1.0.6| What you see is what you get
+          tag_name: v1.0.7
+          release_name: auto-build v1.0.7 | Fix due to amateur hour.
           draft: true
           prerelease: false
       - name: Upload release
