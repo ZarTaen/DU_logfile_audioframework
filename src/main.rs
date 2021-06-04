@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::ffi::OsString;
 use std::time::{Duration, UNIX_EPOCH, Instant};
 use std::io::{BufReader, SeekFrom, Seek, BufRead, Write, stdin, stdout, Error};
@@ -17,7 +17,6 @@ use rodio::{OutputStream, Sink, Decoder, OutputStreamHandle};
 use std::borrow::BorrowMut;
 use std::ops::DerefMut;
 use std::mem::take;
-use std::path::Path;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum SoundCommand{
@@ -182,7 +181,14 @@ fn main() {
         Err(e) => {
             println!("{}", e);
             if !Path::exists("conf".as_ref()) {
-                Path::new("conf");
+                match std::fs::create_dir("conf"){
+                    Ok(_) => {
+                        println!("conf directory created.");
+                    }
+                    Err(_) => {
+                        panic!("Your OS doesn't seem to like this .exe creating a folder.");
+                    }
+                };
             }
             let mut file = match File::create(r#"conf/conf.toml"#){
                 Ok(t) => {
@@ -215,7 +221,14 @@ notification_difference = 50"#.as_bytes());
         }
     }
     if !Path::exists("audiopacks".as_ref()) {
-        Path::new("audiopacks");
+        match std::fs::create_dir("audiopacks"){
+            Ok(_) => {
+                println!("audiopacks directory created.");
+            }
+            Err(_) => {
+                panic!("Your OS doesn't seem to like this .exe creating a folder.");
+            }
+        };
     }
 
     let mut settings_names = vec![];
