@@ -1,6 +1,6 @@
 [package]
 name = "DU_logfile_audioframework"
-version = "1.0.7"
+version = "1.1.0"
 authors = ["ZarTaen <zartaen@gmail.com>"]
 edition = "2018"
 
@@ -13,3 +13,4 @@ htmlescape = "0.3.1"
 winapi-util = "0.1.5"
 config = "0.11.0"
 rodio = "0.13.1"
+rand = "0.8.4"

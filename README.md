@@ -17,14 +17,16 @@ You have a conf.toml file inside the conf folder that allows to change some volu
 ## Usage for Creators
 For supported audio formats, refer to rodio and the included audio libraries.
 In general, .mp3, .wav and .flac are definitely supported.
+Additionally, there is an option to request playing a random file inside a folder by using a path to that folder.
 
 The audiopacks are simply a folder with the audiofiles or folders with audiofiles inside. I recommend including a textfile to show how to use the paths inside the audiopacks, as well as a described usecase with a channel recommendation until a standard is established. Be very careful about including copyrighted material if you plan to distribute it, as it easily becomes a legal minefield. For actual distribution methods of audiopacks, I give no recommendations.
 
-The lua logfile entries look something like this:
+The lua logfile entries look something like this in Standard 1.1:
 ```
 sound_play|path_to/the.mp3(string)|ID(string)|Optional Volume(int 0-100) -- Plays a concurrent sound
 sound_notification|path_to/the.mp3(string)|ID(string)|Optional Volume(int 0-100) -- Lowers volume on all other sounds for its duration, and plays overtop
 sound_q|path_to/the.mp3(string)|ID(string)|Optional Volume(int 0-100) -- Plays a sound after all other queued sounds finish
+sound_loop|path_to/the.mp3(string)|ID(string)|Optional Volume(int 0-100) -- Plays requested sound and ignores the ID with sound_loop until the file stopped playing. Allows proper looping of files.
 
 -- The following use the IDs that were specified in the previous three
 
@@ -57,6 +59,10 @@ Stuff moved so fast, that a lot of the things in my old TODO were obsolete and o
 Lua Commands have been standardised with the help of D.Mentia.
 A lot of huge rewriting for the audio logic, to allow specific behaviour of stuff in my implementation.
 The removal of the audiopacks.toml (It was a bad idea with a good intention).
+
+## Changes with 1.1
+Added sound_loop (extension of the standard, with D.Mentia)
+Added the randomized functionality: Instead of specifying a filepath, you can now specify a folder path and an audiofile will be chosen at random.
 
 ## Video of it in Action
 https://cdn.hyperion-corporation.de/userstorages/cafa3fd0-e7cd-4a50-84a5-552f0b731fcb/music_demonstration.mp4

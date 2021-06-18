@@ -2,7 +2,7 @@ use std::path::{PathBuf, Path};
 use std::ffi::OsString;
 use std::time::{Duration, UNIX_EPOCH, Instant};
 use std::io::{BufReader, SeekFrom, Seek, BufRead, Write, stdin, stdout, Error};
-use std::fs::File;
+use std::fs::{File, ReadDir};
 use std::{thread, fs};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::sleep;
@@ -17,10 +17,13 @@ use rodio::{OutputStream, Sink, Decoder, OutputStreamHandle};
 use std::borrow::BorrowMut;
 use std::ops::DerefMut;
 use std::mem::take;
+use std::fs::metadata;
+use rand::Rng;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 enum SoundCommand{
     Play,
+    Loop,
     Notification,
     Queue,
     Volume,
@@ -388,6 +391,9 @@ fn worker(thread_recv:Receiver<String>, audio_path_send:Sender<(SoundCommand, St
             "sound_q" => {
                 file_to_audio_handling(SoundCommand::Queue, var_amount, strings, &audio_path_send, queue_volume.clone());
             },
+            "sound_loop" => {
+                file_to_audio_handling(SoundCommand::Loop,var_amount, strings, &audio_path_send, concurrent_volume.clone() )
+            }
             "sound_volume" => {
                 control_to_audio_handling(SoundCommand::Volume, var_amount, strings, &audio_path_send);
             },
@@ -479,6 +485,7 @@ struct AudioEntry {
     volume:f32,
     path: String,
     sink: Sink,
+    looped: bool,
     pause_state: bool,
 }
 
@@ -562,6 +569,7 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                                 volume: t.3,
                                 path: t.1,
                                 sink: sink,
+                                looped: false,
                                 pause_state:false
                             };
                             //queues itself to its own sink, lol
@@ -570,6 +578,35 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                             entry.sink.play();
                             sound_map.insert(t.2, entry);
                         };
+                    }
+                    SoundCommand::Loop => {
+                        let source = match open_audio_file(t.1.clone()){
+                            Ok(t) => {
+                                t
+                            },
+                            Err(e) => {
+                                println!("{}",e);
+                                continue
+                            }
+                        };
+                        if !sound_map.contains_key(t.2.as_str()){
+                            let sink = Sink::try_new(&stream_handle).unwrap();
+                            let entry = AudioEntry {
+                                sound_command: SoundCommand::Play,
+                                volume: t.3,
+                                path: t.1,
+                                sink: sink,
+                                looped: true,
+                                pause_state:false
+                            };
+                            //queues itself to its own sink, lol
+                            entry.sink.set_volume(entry.volume*active_notification_modifier);
+                            entry.sink.append(source);
+                            entry.sink.play();
+                            sound_map.insert(t.2, entry);
+                        }else {
+                            sound_map.get_mut(t.2.as_str()).unwrap().looped = true;
+                        }
                     }
                     SoundCommand::Notification => {
                         let result =  queue_decision(t, &mut sound_map, &mut notification_stack, &mut paused_notifications, notification_sink, &stream_handle, playing_notification);
@@ -590,6 +627,10 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                             Some(k) => {
                                 match k.sound_command{
                                     SoundCommand::Play => {
+                                        k.volume = t.3;
+                                        k.sink.set_volume(k.volume*active_notification_modifier);
+                                    }
+                                    SoundCommand::Loop => {
                                         k.volume = t.3;
                                         k.sink.set_volume(k.volume*active_notification_modifier);
                                     }
@@ -857,12 +898,29 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
         //Empty sinks are collected and then removed.
         //Other sinks receive a changed volume, depending on the defined volume and the notification multiplier.
         //For now it iterates over it, no matter what
-        for i in &sound_map{
+        for i in &mut sound_map{
             match i.1.sound_command{
                 SoundCommand::Play => {
                     if i.1.sink.empty(){
-                        delete_entries.push(i.0.clone());
-                        continue
+                        if i.1.looped {
+                            i.1.looped = false;
+                            let source = match open_audio_file(i.1.path.clone()){
+                                Ok(t) => {
+                                    t
+                                },
+                                Err(e) => {
+                                    println!("{}",e);
+                                    continue
+                                }
+                            };
+                            i.1.sink = Sink::try_new(&stream_handle).unwrap();
+                            i.1.sink.set_volume(i.1.volume*active_notification_modifier);
+                            i.1.sink.append(source);
+                            i.1.sink.play();
+                        }else{
+                            delete_entries.push(i.0.clone());
+                            continue
+                        }
                     }else{
                         i.1.sink.set_volume(i.1.volume*active_notification_modifier);
                     }
@@ -921,6 +979,7 @@ fn queue_decision(values:(SoundCommand, String, String, f32), sound_map:&mut Has
             sound_command: values.0,
             volume: values.3,
             path: values.1,
+            looped: false,
             sink: sink,
             pause_state: false
         };
@@ -1001,16 +1060,42 @@ fn queue_handling(mut audio_sink: Sink, audio_vec:&mut Vec<String>, sound_map:&m
 
 ///Opens audio file and returns a source or returns an error if it fails.
 fn open_audio_file(path: String) -> Result<Decoder<BufReader<File>>, String> {
-    let audio_file = BufReader::new(match File::open(path.clone()){
+    let md = metadata(path.clone()).unwrap();
+    let mut real_path = path.clone();
+    let poth = PathBuf::from(&path.clone());
+    if md.is_dir(){
+        let mut entries = poth.read_dir().expect("");
+        let max = entries.count();
+        entries = poth.read_dir().expect("");
+        let mut rng = rand::thread_rng();
+        let random = rng.gen_range(0..max);
+        let mut counter = 0;
+        for entry in entries {
+            if counter<random {
+                counter = counter+1;
+                continue
+            }else{
+                match entry{
+                    Ok(t) => {
+                        real_path = t.path().to_string_lossy().to_string();
+                        break
+                    }
+                    Err(_) => {
+                    }
+                }
+            }
+        }
+    }
+    let audio_file = BufReader::new(match File::open(real_path.clone()){
         Ok(t) => {t}
         Err(e) => {
-            return Err(format!("{} at Path: {}",e.to_string(),path))
+            return Err(format!("{} at Path: {}",e.to_string(),real_path))
         }
     });
     let source = match Decoder::new(audio_file){
         Ok(t) => { t }
         Err(e) => {
-            return Err(format!("{} at Path: {}",e.to_string(),path))
+            return Err(format!("{} at Path: {}",e.to_string(),real_path))
         }
     };
     Ok(source)

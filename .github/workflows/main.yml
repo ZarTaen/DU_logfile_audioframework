@@ -23,8 +23,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v1.0.7
-          release_name: auto-build v1.0.7 | Fix due to amateur hour.
+          tag_name: v1.1.0
+          release_name: auto-build v1.1.0 | Added Loops and Randomization.
           draft: true
           prerelease: false
       - name: Upload release
@@ -34,7 +34,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: target\release\DU_logfile_audioframework.exe
-          asset_name: DU_logfile_audioframework_106.exe
+          asset_name: DU_logfile_audioframework_110.exe
           asset_content_type: application/zip
       - name: Publish release
         uses: eregon/publish-release@v1
