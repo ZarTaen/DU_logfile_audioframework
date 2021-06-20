@@ -2,7 +2,7 @@ use std::path::{PathBuf, Path};
 use std::ffi::OsString;
 use std::time::{Duration, UNIX_EPOCH, Instant};
 use std::io::{BufReader, SeekFrom, Seek, BufRead, Write, stdin, stdout, Error};
-use std::fs::{File, ReadDir};
+use std::fs::{File, ReadDir, Metadata};
 use std::{thread, fs};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::sleep;
@@ -1060,7 +1060,12 @@ fn queue_handling(mut audio_sink: Sink, audio_vec:&mut Vec<String>, sound_map:&m
 
 ///Opens audio file and returns a source or returns an error if it fails.
 fn open_audio_file(path: String) -> Result<Decoder<BufReader<File>>, String> {
-    let md = metadata(path.clone()).unwrap();
+    let md = match metadata(path.clone()){
+        Ok(t) => {t}
+        Err(e) => {
+            return Err(e.to_string())
+        }
+    };
     let mut real_path = path.clone();
     let poth = PathBuf::from(&path.clone());
     if md.is_dir(){
