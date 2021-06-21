@@ -547,7 +547,7 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                                 t
                             },
                             Err(e) => {
-                                println!("{}",e);
+                                //println!("{}",e);
                                 continue
                             }
                         };
@@ -585,7 +585,7 @@ fn audio_handling(new_audio_file_recv:Receiver<(SoundCommand, String, String, f3
                                 t
                             },
                             Err(e) => {
-                                println!("{}",e);
+                                //println!("{}",e);
                                 continue
                             }
                         };
@@ -1026,7 +1026,7 @@ fn queue_handling(mut audio_sink: Sink, audio_vec:&mut Vec<String>, sound_map:&m
                     t
                 },
                 Err(e) => {
-                    println!("{}", e);
+                    //println!("{}", e);
                     //Because it failed, the entry is removed, here, as well as from sound_map!
                     sound_map.remove(audio_vec[0].as_str());
                     audio_vec.remove(0);
@@ -1071,24 +1071,28 @@ fn open_audio_file(path: String) -> Result<Decoder<BufReader<File>>, String> {
     if md.is_dir(){
         let mut entries = poth.read_dir().expect("");
         let max = entries.count();
-        entries = poth.read_dir().expect("");
-        let mut rng = rand::thread_rng();
-        let random = rng.gen_range(0..max);
-        let mut counter = 0;
-        for entry in entries {
-            if counter<random {
-                counter = counter+1;
-                continue
-            }else{
-                match entry{
-                    Ok(t) => {
-                        real_path = t.path().to_string_lossy().to_string();
-                        break
-                    }
-                    Err(_) => {
+        if max>0{
+            entries = poth.read_dir().expect("");
+            let mut rng = rand::thread_rng();
+            let random = rng.gen_range(0..max);
+            let mut counter = 0;
+            for entry in entries {
+                if counter<random {
+                    counter = counter+1;
+                    continue
+                }else{
+                    match entry{
+                        Ok(t) => {
+                            real_path = t.path().to_string_lossy().to_string();
+                            break
+                        }
+                        Err(_) => {
+                        }
                     }
                 }
             }
+        }else{
+            return Err(format!("No files at Path: {}",real_path));
         }
     }
     let audio_file = BufReader::new(match File::open(real_path.clone()){
