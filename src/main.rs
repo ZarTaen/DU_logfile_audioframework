@@ -966,9 +966,10 @@ fn queue_decision(values:(SoundCommand, String, String, f32), sound_map:&mut Has
         }
         //Here, the currently_playing could either be the just now about to be added ID, or something else. Either way, the queue_handling should handle it.
         //The entry is removed, should it have been queued before.
-        for i in 0..queue.len() {
+        for mut i in 0..queue.len() {
             if queue[i].as_str() == values.2.as_str() {
                 queue.remove(i);
+                i=i-1;
             }
         }
         queue.push(values.2);
