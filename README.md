@@ -3,7 +3,7 @@
 DU_logfile_audioframework is a logfile reader for Dual Universe that allows to play audiofiles via Lua Commands inside the game.
 
 ## Installation
-Put the .exe is inside a folder of your choice. On first startup, the .exe will create the default conf.toml file inside the folder conf and an audiopacks folder next to the .exe, so be careful to put the program into a folder.
+Put the .exe inside a folder of your choice. On first startup, the .exe will create the default conf.toml file inside the folder conf and an audiopacks folder next to the .exe, so be careful to put the program into a folder.
 Be careful about the source of the files should you get them somewhere else, as I cannot guarantee they are not tampered with.
 You can also take a look at the implementation of D.Mentia here:
 
