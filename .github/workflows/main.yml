@@ -23,8 +23,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v1.1.3
-          release_name: auto-build v1.1.3 | I deleted an entry from an array I was iterating over, without correcting it. Now this is fixed.
+          tag_name: v1.1.4
+          release_name: auto-build v1.1.4 | Fixed a crash issue with stopping entries in a queue.
           draft: true
           prerelease: false
       - name: Upload release
@@ -34,7 +34,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: target\release\DU_logfile_audioframework.exe
-          asset_name: DU_logfile_audioframework_113.exe
+          asset_name: DU_logfile_audioframework_114.exe
           asset_content_type: application/zip
       - name: Publish release
         uses: eregon/publish-release@v1

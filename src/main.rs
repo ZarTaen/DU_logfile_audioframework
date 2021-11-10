@@ -969,7 +969,7 @@ fn queue_decision(values:(SoundCommand, String, String, f32), sound_map:&mut Has
         for mut i in 0..queue.len() {
             if queue[i].as_str() == values.2.as_str() {
                 queue.remove(i);
-                i=i-1;
+                break
             }
         }
         queue.push(values.2);
@@ -991,20 +991,34 @@ fn queue_decision(values:(SoundCommand, String, String, f32), sound_map:&mut Has
     (currently_playing, queue_sink)
 }
 
+//let result = queue_handling(queue_sink, &mut queue_stack, &mut sound_map,&mut paused_queue, active_notification_modifier, &stream_handle, playing_queue);
 ///Handles the queue with pausable entries, etc. it returns the first bool for the current discard state, and the second bool for currently playing (in order to allow the notification volume change!)
 fn queue_handling(mut audio_sink: Sink, audio_vec:&mut Vec<String>, sound_map:&mut HashMap<String, AudioEntry>, paused_vec:&mut Vec<(String, Sink)>, volume_multiplier:f32, stream_handle:&OutputStreamHandle, mut currently_playing: Option<String>) -> (Sink, Option<String>){
+    let non_repeat = false;
+    let mut nonrepeat = None;
     if audio_sink.empty() == true{
         //This cleans up the last played audiofile. the currently_playing is never Some when the file still needs to play. It is only Some when it is playing or has been played.
         match currently_playing{
             None => {
             }
             Some(t) => {
+                if non_repeat{
+                    nonrepeat = Some(sound_map.get(&t).unwrap().path.clone());
+                }
                 sound_map.remove(&t);
                 currently_playing = None;
             }
         }
         for mut i in 0..paused_vec.len(){
             let sound_entry = sound_map.get(paused_vec[i].0.as_str()).unwrap();
+            match &nonrepeat{
+                Some(t) => {
+                    if t == &sound_entry.path{
+                        continue
+                    }
+                }
+                _ => {}
+            }
             if sound_entry.pause_state == false {
                 //The below is a sanity check. If an entry is unpaused, as you can see literally here, the entry is removed as well.
                 if !paused_vec[i].1.empty(){
@@ -1020,8 +1034,19 @@ fn queue_handling(mut audio_sink: Sink, audio_vec:&mut Vec<String>, sound_map:&m
                 }
             }
         }
+
         while audio_vec.len() > 0 {
             let entry = sound_map.get(audio_vec[0].as_str()).unwrap();
+            match &nonrepeat{
+                Some(t) => {
+                    if t == &entry.path{
+                        sound_map.remove(audio_vec[0].as_str());
+                        audio_vec.remove(0);
+                        continue
+                    }
+                }
+                _ => {}
+            }
             let source = match open_audio_file(entry.path.clone()) {
                 Ok(t) => {
                     t
