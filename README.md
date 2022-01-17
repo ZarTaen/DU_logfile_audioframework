@@ -1,4 +1,6 @@
 # DU_logfile_audioframework
+DEPRECATED AS OF 0.28
+Im still going to leave it here for everyone, because it should easily be adaptable for other usecases with logfiles.
 
 DU_logfile_audioframework is a logfile reader for Dual Universe that allows to play audiofiles via Lua Commands inside the game.
 
